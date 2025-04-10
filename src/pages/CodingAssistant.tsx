@@ -1,52 +1,117 @@
 
-import React, { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useRef } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Code, Bug, Book, RefreshCcw, Copy, Check } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Code, Bug, Book, RefreshCcw, Copy, Check, Send, MessageSquare, Plus, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAssistantChat, Message } from "@/hooks/use-assistant-chat";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
 
 const CodingAssistant: React.FC = () => {
-  const [code, setCode] = useState("");
-  const [suggestion, setSuggestion] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [input, setInput] = useState("");
+  const [currentQuery, setCurrentQuery] = useState("");
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [showNewChatForm, setShowNewChatForm] = useState(false);
+  const [newChatTitle, setNewChatTitle] = useState("");
+  const [conversations, setConversations] = useState<any[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-
-  const handleAnalyzeCode = () => {
-    if (!code.trim()) {
+  
+  const { 
+    messages, 
+    isLoading, 
+    createConversation, 
+    sendMessage, 
+    loadConversation,
+    listConversations
+  } = useAssistantChat("coding");
+  
+  useEffect(() => {
+    // Load conversations
+    fetchConversations();
+  }, []);
+  
+  useEffect(() => {
+    // Scroll to bottom when messages change
+    scrollToBottom();
+  }, [messages]);
+  
+  const fetchConversations = async () => {
+    const conversationsData = await listConversations();
+    setConversations(conversationsData);
+  };
+  
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
+  const handleSendMessage = async () => {
+    if (!input.trim()) return;
+    
+    setCurrentQuery(input);
+    
+    if (!activeConversationId) {
+      startNewChat();
+      return;
+    }
+    
+    await sendMessage(input, activeConversationId);
+    setInput("");
+  };
+  
+  const startNewChat = async () => {
+    if (!showNewChatForm) {
+      setShowNewChatForm(true);
+      return;
+    }
+    
+    if (!newChatTitle.trim()) {
       toast({
-        title: "Empty Code",
-        description: "Please enter some code to analyze.",
+        title: "Please enter a title",
+        description: "A title is required to start a new chat",
         variant: "destructive",
       });
       return;
     }
-
-    // This would be replaced with actual AI processing
-    setTimeout(() => {
-      setSuggestion(
-        "Consider refactoring this function using async/await for better readability and error handling. Also, you might want to add type checking for the parameters."
-      );
-      
+    
+    if (!input.trim()) {
       toast({
-        title: "Code Analyzed",
-        description: "Here are some suggestions for your code.",
+        title: "Please enter a message",
+        description: "A message is required to start a new chat",
+        variant: "destructive",
       });
-    }, 1500);
-  };
-
-  const handleCopySuggestion = () => {
-    if (suggestion) {
-      navigator.clipboard.writeText(suggestion);
-      setCopied(true);
-      toast({
-        title: "Copied",
-        description: "Suggestion copied to clipboard.",
-      });
-      
-      setTimeout(() => setCopied(false), 2000);
+      return;
     }
+    
+    const conversationId = await createConversation(newChatTitle, input);
+    if (conversationId) {
+      setActiveConversationId(conversationId);
+      setInput("");
+      setShowNewChatForm(false);
+      setNewChatTitle("");
+      fetchConversations();
+    }
+  };
+  
+  const handleSelectConversation = async (id: string) => {
+    await loadConversation(id);
+    setActiveConversationId(id);
+    setShowNewChatForm(false);
+  };
+  
+  const handleCreateNewChat = () => {
+    setShowNewChatForm(true);
+    setActiveConversationId(null);
+    setMessages([]);
+  };
+  
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString();
   };
 
   return (
@@ -58,144 +123,145 @@ const CodingAssistant: React.FC = () => {
         </p>
       </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Code Analysis</CardTitle>
-          <CardDescription>
-            Paste your code below for real-time analysis and suggestions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            placeholder="Paste your code here..."
-            className="font-mono min-h-[200px] mb-4"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-          <Button 
-            className="w-full" 
-            onClick={handleAnalyzeCode}
-            disabled={!code.trim()}
-          >
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            Analyze Code
-          </Button>
-        </CardContent>
-      </Card>
-      
-      {suggestion && (
-        <Card className="animate-slide-in">
-          <CardHeader>
-            <CardTitle>AI Suggestions</CardTitle>
-            <CardDescription>
-              Based on your code, here are some recommendations
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-muted p-4 rounded-md relative">
-              <p>{suggestion}</p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2"
-                onClick={handleCopySuggestion}
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Conversations Sidebar */}
+        <div className="md:col-span-3">
+          <Card className="h-[calc(100vh-200px)]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex justify-between items-center">
+                Conversations
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCreateNewChat}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  New
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-auto max-h-[calc(100%-80px)]">
+              {conversations.length === 0 && !isLoading ? (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  No conversations yet. Start a new one!
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {conversations.map((conv) => (
+                    <Button
+                      key={conv.id}
+                      variant={activeConversationId === conv.id ? "secondary" : "ghost"}
+                      className="w-full justify-start text-left font-normal h-auto py-2"
+                      onClick={() => handleSelectConversation(conv.id)}
+                    >
+                      <div>
+                        <div className="font-medium truncate">{conv.title}</div>
+                        <div className="text-xs text-muted-foreground flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {formatDate(conv.created_at)}
+                        </div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Chat Area */}
+        <div className="md:col-span-9">
+          <Card className="h-[calc(100vh-200px)] flex flex-col">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">
+                {showNewChatForm ? "New Conversation" : (
+                  conversations.find(c => c.id === activeConversationId)?.title || "Select or start a conversation"
                 )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
-      <Tabs defaultValue="suggestions" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="suggestions">Code Suggestions</TabsTrigger>
-          <TabsTrigger value="debugging">Debugging</TabsTrigger>
-          <TabsTrigger value="learning">Learning Resources</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="suggestions">
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Code className="h-5 w-5 text-assistant-primary" />
-              <div>
-                <CardTitle>Code Suggestions</CardTitle>
-                <CardDescription>
-                  Get intelligent recommendations to improve your code
-                </CardDescription>
-              </div>
+              </CardTitle>
+              {showNewChatForm && (
+                <div className="mt-2">
+                  <Label htmlFor="chat-title">Conversation Title</Label>
+                  <Input
+                    id="chat-title"
+                    placeholder="E.g., Fixing React useEffect Bug"
+                    value={newChatTitle}
+                    onChange={(e) => setNewChatTitle(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              )}
             </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm mb-4">
-                Paste your code above to get personalized suggestions for:
-              </p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Code structure and organization</li>
-                <li>Performance optimization</li>
-                <li>Best practices and conventions</li>
-                <li>Error handling improvements</li>
-                <li>Documentation recommendations</li>
-              </ul>
+            <CardContent className="flex-grow overflow-auto relative p-4">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Code className="h-12 w-12 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Coding Assistant</h3>
+                  <p className="text-muted-foreground max-w-md">
+                    Ask me about code problems, debugging help, or learning resources. 
+                    I'm here to help you write better code!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {messages.map((message, index) => (
+                    <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`flex items-start gap-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                        <Avatar className={message.role === 'user' ? 'bg-primary' : 'bg-secondary'}>
+                          <AvatarFallback>
+                            {message.role === 'user' ? 'U' : 'AI'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className={`rounded-lg p-3 ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                          <div className="whitespace-pre-wrap">{message.content}</div>
+                          {message.created_at && (
+                            <div className="text-xs opacity-70 mt-1">
+                              {new Date(message.created_at).toLocaleTimeString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
             </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="debugging">
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Bug className="h-5 w-5 text-red-500" />
-              <div>
-                <CardTitle>Debugging Assistant</CardTitle>
-                <CardDescription>
-                  Identify and fix bugs in your code
-                </CardDescription>
+            <CardFooter className="border-t p-3">
+              <div className="flex w-full items-center space-x-2">
+                <Textarea
+                  id="message"
+                  placeholder={showNewChatForm ? "Ask your coding question..." : "Type a message..."}
+                  className="flex-1 resize-none"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (showNewChatForm) {
+                        startNewChat();
+                      } else {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                />
+                <Button 
+                  type="submit" 
+                  size="icon"
+                  disabled={isLoading || !input.trim()}
+                  onClick={showNewChatForm ? startNewChat : handleSendMessage}
+                >
+                  {isLoading ? (
+                    <RefreshCcw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm mb-4">
-                The debugging assistant can help you:
-              </p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Identify syntax errors</li>
-                <li>Detect logical issues</li>
-                <li>Find security vulnerabilities</li>
-                <li>Suggest fixes for common bugs</li>
-                <li>Explain why errors occur</li>
-              </ul>
-            </CardContent>
+            </CardFooter>
           </Card>
-        </TabsContent>
-        
-        <TabsContent value="learning">
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-2">
-              <Book className="h-5 w-5 text-emerald-500" />
-              <div>
-                <CardTitle>Learning Resources</CardTitle>
-                <CardDescription>
-                  Improve your coding skills with personalized resources
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm mb-4">
-                Based on your code and activity, we can recommend:
-              </p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Tutorials for concepts you're working with</li>
-                <li>Documentation for libraries and frameworks</li>
-                <li>Best practice guides</li>
-                <li>Example code snippets</li>
-                <li>Advanced techniques to level up your skills</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   );
 };

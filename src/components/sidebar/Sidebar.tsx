@@ -55,7 +55,7 @@ export const Sidebar: React.FC = () => {
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
-                    active={location.pathname === item.path}
+                    isActive={location.pathname === item.path}
                     onClick={() => navigate(item.path)}
                   >
                     <item.icon className="h-5 w-5 mr-3" />
@@ -74,7 +74,7 @@ export const Sidebar: React.FC = () => {
               {bottomMenuItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
-                    active={location.pathname === item.path}
+                    isActive={location.pathname === item.path}
                     onClick={() => navigate(item.path)}
                   >
                     <item.icon className="h-5 w-5 mr-3" />
